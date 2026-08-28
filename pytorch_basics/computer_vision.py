@@ -81,10 +81,12 @@ def main():
     hidden_units=10,
     output_shape=len(class_names)).to(device)
     model_0.to(device)
+
+    model_2 = FashionMNISTModelV2(input_shape=1, hidden_units=10, output_shape = len(class_names)).to(device)
     print(device)
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer =  torch.optim.SGD(params=model_1.parameters(), lr=0.1)
+    optimizer =  torch.optim.SGD(params=model_2.parameters(), lr=0.1)
 
     train_time_on_cpu = timer()
 
@@ -93,13 +95,13 @@ def main():
     for epoch in tqdm(range(epochs)):
         print(f"Epoch: {epoch}\n---------")
         train_step(data_loader=train_dataloader,
-            model=model_1,
+            model=model_2,
             loss_fn=loss_fn,
             optimizer=optimizer,
             accuracy_fn=accuracy_fn
         )
         eval_model(data_loader=test_dataloader,
-            model=model_1,
+            model=model_2,
             loss_fn=loss_fn,
             accuracy_fn=accuracy_fn
         )
@@ -110,6 +112,25 @@ def main():
                                            end=train_time_end_on_cpu,
                                            device=str(next(model_1.parameters()).device))
 
+
+    MODEL_PATH = Path("models")
+    MODEL_PATH.mkdir(parents=True, exist_ok=True)
+
+    MODEL_NAME = "03_pytorch_computer_vision_model_2.pt"
+    MODEL_SAVE_PATH = MODEL_PATH / MODEL_NAME
+
+    print(f"Saveing Model to : {MODEL_SAVE_PATH}")
+    torch.save(obj=model_2.state_dict(), f=MODEL_SAVE_PATH)
+    loaded_model_2 = FashionMNISTModelV2(input_shape=1,
+                                    hidden_units=10, # try changing this to 128 and seeing what happens
+                                    output_shape=10)
+
+# Load in the saved state_dict()
+    loaded_model_2.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
+
+# Send model to GPU
+    loaded_model_2 = loaded_model_2.to(device)
+#Linear Model
 class FashionMNISTModelV0(nn.Module):
     def __init__(self, input_shape: int, hidden_units: int, output_shape:int):
         super().__init__()
@@ -121,6 +142,8 @@ class FashionMNISTModelV0(nn.Module):
     def forward(self, x):
         return self.layer_stack(x)
 
+    
+#Non-Linear model using ReLU
 class FashionMNISTModelV1(nn.Module):
     def __init__(self, input_shape: int, hidden_units: int, output_shape:int):
         super().__init__()
@@ -134,6 +157,47 @@ class FashionMNISTModelV1(nn.Module):
     def forward(self, x):
         return self.layer_stack(x)
 
+
+class FashionMNISTModelV2(nn.Module):
+
+    def __init__(self, input_shape: int, hidden_units: int, output_shape: int):
+        super().__init__()
+        self.block_1 = nn.Sequential(
+            nn.Conv2d(in_channels=input_shape,
+                      out_channels=hidden_units,
+                      kernel_size=3,
+                      stride=1,
+                      padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=hidden_units,
+                      out_channels=hidden_units,
+                      kernel_size=3,
+                      stride=1,
+                      padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2)
+        )
+
+        self.block_2 = nn.Sequential(
+            nn.Conv2d(hidden_units, hidden_units, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(hidden_units, hidden_units, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+
+        self.classifer = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_features=hidden_units*7*7, out_features=output_shape)
+        )
+    def forward(self, x):
+        x = self.block_1(x)
+        x=self.block_2(x)
+        x=self.classifer(x)
+
+        return x
+
+#function used to calculate the run time of models
 def print_train_time(start: float, end: float, device: torch.device = None):
     total_time = end - start 
     print(f"Train time one {device} : {total_time:.3f} seconds")
@@ -141,7 +205,7 @@ def print_train_time(start: float, end: float, device: torch.device = None):
 
 
      
-
+#function to see how well a model was trained
 def eval_model(model: torch.nn.Module,
                data_loader: torch.utils.data.DataLoader,
                loss_fn: torch.nn.Module,
